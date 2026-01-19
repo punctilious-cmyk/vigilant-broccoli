@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket Tanks - Dashboard Fuel 2026</title>
+    <style>
+        :root { --p1: #FF3D00; --p2: #00B0FF; --bg: #0a0a0c; --fuel: #00ffaa; }
+        body { margin: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; color: white; font-family: 'Inter', system-ui, sans-serif; }
+        canvas { border-radius: 20px; box-shadow: 0 30px 70px rgba(0,0,0,0.9); background: linear-gradient(to bottom, #1a1c2c, #4a192c); }
+        
+        #score-hud { position: absolute; top: 20px; width: 900px; display: flex; justify-content: space-between; font-size: 2rem; font-weight: 900; pointer-events: none; }
+        .p1-score { color: var(--p1); }
+        .p2-score { color: var(--p2); }
+        #wind-display { position: absolute; top: 30px; font-weight: 800; font-size: 1.2rem; text-transform: uppercase; color: #aaa; }
+
+        #dashboard { margin-top: 25px; display: grid; grid-template-columns: 1fr 150px 1fr; gap: 20px; width: 900px; align-items: center; }
+        .player-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); padding: 20px; border-radius: 24px; display: flex; flex-direction: column; gap: 15px; border: 2px solid transparent; transition: 0.4s; opacity: 0.3; }
+        .player-panel.active { opacity: 1; transform: translateY(-5px); border-color: rgba(255,255,255,0.1); }
+        .p1-active { border-color: var(--p1) !important; }
+        .p2-active { border-color: var(--p2) !important; }
+
+        .controls-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; width: 100%; }
+        .control-unit { display: flex; flex-direction: column; align-items: center; }
+        .label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 4px; }
+        .val { font-size: 1.1rem; font-weight: 700; }
+        
+        /* Fuel Gauge Styling */
+        .fuel-container { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px; border: 1px solid rgba(255,255,255,0.05); }
+        .fuel-bar { height: 100%; width: 100%; background: var(--fuel); box-shadow: 0 0 10px var(--fuel); transition: width 0.1s ease-out; }
+        
+        select { background: #222; color: white; border: 1px solid #444; border-radius: 5px; padding: 5px; cursor: pointer; width: 100%; }
+        #fire-btn { background: white; border: none; color: black; padding: 20px; border-radius: 50%; font-size: 0.9rem; font-weight: 900; cursor: pointer; height: 90px; width: 90px; box-shadow: 0 0 30px rgba(255,255,255,0.2); transition: 0.2s; }
+        #fire-btn:hover { background: #ff0055; color: white; transform: scale(1.1); }
+        input[type=range] { width: 100%; accent-color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="score-hud">
+        <div class="p1-score">P1: <span id="s1">0</span></div>
+        <div id="wind-display">WIND: 0</div>
+        <div class="p2-score"><span id="s2">0</span> :P2</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="dashboard">
+        <!-- Player 1 Panel -->
+        <div id="panel-1" class="player-panel active p1-active">
+            <div class="controls-row">
+                <div class="control-unit"><span class="label">Angle</span><input type="range" id="p1-angle" min="0" max="90" value="45"><span id="p1-angle-val" class="val">45°</span></div>
+                <div class="control-unit"><span class="label">Power</span><input type="range" id="p1-power" min="10" max="100" value="60"><span id="p1-power-val" class="val">60</span></div>
+                <div class="control-unit"><span class="label">Weapon</span><select id="p1-weapon"><option value="standard">Standard</option><option value="mega">Mega Bomb</option><option value="colorblast">Color Blast</option><option value="cluster">Cluster Bomb</option><option value="airstrike">Air Strike</option><option value="rainbowdrill">Rainbow Drill</option></select></div>
+            </div>
+            <div class="control-unit" style="align-items: flex-start;">
+                <span class="label">Fuel Tank</span>
+                <div class="fuel-container"><div id="p1-fuel-bar" class="fuel-bar"></div></div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: center;"><button id="fire-btn">FIRE</button></div>
+
+        <!-- Player 2 Panel -->
+        <div id="panel-2" class="player-panel">
+            <div class="controls-row">
+                <div class="control-unit"><span class="label">Angle</span><input type="range" id="p2-angle" min="0" max="90" value="45"><span id="p2-angle-val" class="val">45°</span></div>
+                <div class="control-unit"><span class="label">Power</span><input type="range" id="p2-power" min="10" max="100" value="60"><span id="p2-power-val" class="val">60</span></div>
+                <div class="control-unit"><span class="label">Weapon</span><select id="p2-weapon"><option value="standard">Standard</option><option value="mega">Mega Bomb</option><option value="colorblast">Color Blast</option><option value="cluster">Cluster Bomb</option><option value="airstrike">Air Strike</option><option value="rainbowdrill">Rainbow Drill</option></select></div>
+            </div>
+            <div class="control-unit" style="align-items: flex-start;">
+                <span class="label">Fuel Tank</span>
+                <div class="fuel-container"><div id="p2-fuel-bar" class="fuel-bar"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 900; canvas.height = 450;
+
+            let terrain = Array.from({length: 900}, (_, i) => 360 + Math.sin(i * 0.015) * 35 + Math.cos(i * 0.04) * 8);
+            let wind = (Math.random() * 0.3 - 0.15); 
+            let screenShake = 0, projectList = [], activeStream = null, turnTaken = false;
+
+            const players = {
+                p1: { x: 120, y: 0, color: '#FF3D00', angle: 45, power: 60, score: 0, fuel: 100, id: 1, panel: document.getElementById('panel-1') },
+                p2: { x: 780, y: 0, color: '#00B0FF', angle: 45, power: 60, score: 0, fuel: 100, id: 2, panel: document.getElementById('panel-2') }
+            };
+
+            const WEAPONS = {
+                standard: { r: 35, speed: 0.18, color: '#fff', type: 'bomb' },
+                mega: { r: 65, speed: 0.14, color: '#ffcc00', type: 'bomb' },
+                colorblast: { r: 12, speed: 0.16, type: 'stream' },
+                cluster: { r: 30, speed: 0.18, color: '#ff5500', type: 'cluster' },
+                airstrike: { r: 40, speed: 0.22, color: '#ff0055', type: 'airstrike' },
+                rainbowdrill: { r: 5, speed: 0.35, color: '#ff00dc', type: 'drill' }
+            };
+
+            let currentPlayer = players.p1;
+            const audioLib = { music: new Audio('background_music.mp3'), fire: new Audio('fire.mp3'), explode: new Audio('explosion.wav'), move: new Audio('move.wav') };
+            audioLib.music.loop = true;
+
+            function playInstant(key, vol = 0.6) { const s = audioLib[key].cloneNode(); s.volume = vol; s.play().catch(() => {}); }
+            window.addEventListener('mousedown', () => { if(audioLib.music.paused) audioLib.music.play().catch(() => {}); }, { once: true });
+
+            const getH = (x) => terrain[Math.floor(Math.max(0, Math.min(899, x)))];
+
+            function destroy(x, y, r, silent = false, isDrill = false) {
+                if(!silent) { playInstant('explode', 0.4); screenShake = r * 0.2; }
+                for (let i = Math.floor(x-r); i < Math.ceil(x+r); i++) {
+                    if (i < 0 || i >= 900) continue;
+                    const dist = Math.abs(x - i);
+                    let depth = isDrill ? (450 - y) : Math.sqrt(Math.max(0, r*r - dist*dist));
+                    terrain[i] = Math.max(terrain[i], y + depth);
+                }
+                Object.values(players).forEach(p => {
+                    const dist = Math.hypot(p.x - x, p.y - y);
+                    if(dist < r + 15) {
+                        currentPlayer.score += Math.floor(Math.max(0, r - dist + 20));
+                        document.getElementById('s' + currentPlayer.id).innerText = currentPlayer.score;
+                    }
+                });
+            }
+
+            document.getElementById('fire-btn').onclick = () => {
+                if (projectList.length > 0 || activeStream) return;
+                const weaponName = document.getElementById(`p${currentPlayer.id}-weapon`).value;
+                const w = WEAPONS[weaponName];
+                const rad = (currentPlayer.id === 1 ? currentPlayer.angle : 180 - currentPlayer.angle) * (Math.PI/180);
+                turnTaken = true;
+                if(w.type === 'stream') { activeStream = { timer: 60, rad: rad, w: w }; }
+                else {
+                    projectList.push({ x: currentPlayer.x, y: currentPlayer.y-15, vx: Math.cos(rad)*(currentPlayer.power*w.speed), vy: -Math.sin(rad)*(currentPlayer.power*w.speed), r: w.r, color: w.color, type: w.type });
+                    playInstant('fire', 0.8);
+                }
+            };
+
+            ['p1', 'p2'].forEach(p => {
+                document.getElementById(`${p}-angle`).oninput = function() { players[p].angle = parseInt(this.value); document.getElementById(`${p}-angle-val`).innerText = this.value + '°'; };
+                document.getElementById(`${p}-power`).oninput = function() { players[p].power = parseInt(this.value); document.getElementById(`${p}-power-val`).innerText = this.value; };
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (projectList.length > 0 || activeStream) return;
+                if (currentPlayer.fuel > 0) {
+                    if (e.key === 'ArrowLeft' && currentPlayer.x > 20) { 
+                        currentPlayer.x -= 3; currentPlayer.fuel -= 1.5; playInstant('move', 0.05); 
+                    }
+                    if (e.key === 'ArrowRight' && currentPlayer.x < 880) { 
+                        currentPlayer.x += 3; currentPlayer.fuel -= 1.5; playInstant('move', 0.05); 
+                    }
+                    // Update HTML fuel bar
+                    document.getElementById(`p${currentPlayer.id}-fuel-bar`).style.width = `${Math.max(0, currentPlayer.fuel)}%`;
+                }
+            });
+
+            function drawTank(tank) {
+                tank.y = getH(tank.x) - 4;
+                ctx.save();
+                ctx.translate(tank.x, tank.y);
+                ctx.fillStyle = '#333';
+                ctx.beginPath(); ctx.roundRect(-18, -2, 36, 10, 5); ctx.fill();
+                ctx.fillStyle = '#555';
+                for (let i = -12; i <= 12; i += 12) { ctx.beginPath(); ctx.arc(i, 4, 3, 0, Math.PI * 2); ctx.fill(); }
+                let hullGrad = ctx.createLinearGradient(0, -12, 0, 0);
+                hullGrad.addColorStop(0, tank.color); hullGrad.addColorStop(1, '#000');
+                ctx.fillStyle = hullGrad;
+                ctx.beginPath(); ctx.roundRect(-20, -12, 40, 12, 4); ctx.fill();
+                ctx.fillStyle = tank.color; ctx.beginPath(); ctx.arc(0, -12, 10, Math.PI, 0); ctx.fill();
+                const rad = (tank.id === 1 ? tank.angle : 180 - tank.angle) * (Math.PI / 180);
+                ctx.save(); ctx.translate(0, -12); ctx.rotate(-rad);
+                ctx.fillStyle = tank.color; ctx.fillRect(0, -3, 30, 6);
+                ctx.fillStyle = '#222'; ctx.fillRect(26, -4, 6, 8);
+                ctx.restore(); ctx.restore();
+            }
+
+            function gameLoop() {
+                ctx.save();
+                if (screenShake > 0) { ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake); screenShake *= 0.9; }
+                ctx.clearRect(0, 0, 900, 450);
+                document.getElementById('wind-display').innerText = `WIND: ${wind > 0 ? '→' : '←'} ${Math.abs(wind*100).toFixed(0)}`;
+                ctx.beginPath(); ctx.moveTo(0, 450); terrain.forEach((y, x) => ctx.lineTo(x, y));
+                ctx.lineTo(900, 450); ctx.fillStyle = '#1b5e20'; ctx.fill();
+                Object.values(players).forEach(drawTank);
+
+                if (projectList.length === 0 && !activeStream) {
+                    ctx.save(); ctx.beginPath(); ctx.setLineDash(); ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                    let gx = currentPlayer.x, gy = currentPlayer.y - 15;
+                    const w = WEAPONS[document.getElementById(`p${currentPlayer.id}-weapon`).value];
+                    const grad = (currentPlayer.id === 1 ? currentPlayer.angle : 180 - currentPlayer.angle) * (Math.PI / 180);
+                    let gvx = Math.cos(grad) * (currentPlayer.power * w.speed), gvy = -Math.sin(grad) * (currentPlayer.power * w.speed);
+                    ctx.moveTo(gx, gy);
+                    for (let i = 0; i < 8; i++) { gx += gvx * 2; gvy += 0.2 * 2; gy += gvy * 2; ctx.lineTo(gx, gy); }
+                    ctx.stroke(); ctx.restore();
+                }
+
+                if(activeStream) {
+                    if(activeStream.timer % 4 === 0) {
+                        const w = activeStream.w;
+                        projectList.push({ x: currentPlayer.x, y: currentPlayer.y-15, vx: Math.cos(activeStream.rad)*(currentPlayer.power*w.speed) + (Math.random()-0.5), vy: -Math.sin(activeStream.rad)*(currentPlayer.power*w.speed) + (Math.random()-0.5), r: w.r, color: `hsl(${Math.random()*360}, 100%, 60%)`, isBlast: true, type: w.type });
+                        playInstant('fire', 0.2);
+                    }
+                    activeStream.timer--; if(activeStream.timer <= 0) activeStream = null;
+                }
+
+                projectList = projectList.filter(p => {
+                    p.vx += wind * 0.05; p.vy += 0.2; p.x += p.vx; p.y += p.vy;
+                    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.isBlast ? 3 : 5, 0, Math.PI*2); ctx.fill();
+                    if (p.y >= getH(p.x) || p.x < 0 || p.x > 900) {
+                        if (p.type === 'cluster') for(let i=0; i<5; i++) projectList.push({ x: p.x, y: p.y - 10, vx: (Math.random()-0.5)*8, vy: -Math.random()*10, r: 25, color: '#ffaa00', type: 'bomb' });
+                        else if (p.type === 'airstrike') for(let i=0; i<3; i++) projectList.push({ x: p.x + (i-1)*40, y: -50, vx: 0, vy: 5, r: 40, color: '#ff0000', type: 'bomb' });
+                        destroy(p.x, p.y, p.r, p.isBlast, p.type === 'rainbowdrill');
+                        return false;
+                    }
+                    return true;
+                });
+
+                if (turnTaken && projectList.length === 0 && !activeStream) {
+                    turnTaken = false; wind = (Math.random() * 0.3 - 0.15); 
+                    currentPlayer.fuel = 100;
+                    document.getElementById(`p${currentPlayer.id}-fuel-bar`).style.width = `100%`;
+                    currentPlayer.panel.classList.remove('active', 'p1-active', 'p2-active');
+                    currentPlayer = (currentPlayer.id === 1 ? players.p2 : players.p1);
+                    currentPlayer.panel.classList.add('active', (currentPlayer.id === 1 ? 'p1-active' : 'p2-active'));
+                    document.getElementById(`p${currentPlayer.id}-fuel-bar`).style.width = `100%`;
+                }
+                ctx.restore();
+                requestAnimationFrame(gameLoop);
+            }
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
