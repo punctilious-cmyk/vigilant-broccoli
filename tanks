@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket Tanks - Weapons & Scoring</title>
+    <style>
+        :root { --p1: #FF3D00; --p2: #00B0FF; --bg: #0a0a0c; }
+        body { margin: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; color: white; font-family: 'Inter', system-ui, sans-serif; }
+        canvas { border-radius: 20px; box-shadow: 0 30px 70px rgba(0,0,0,0.9); background: linear-gradient(to bottom, #1a1c2c, #4a192c); }
+        
+        #score-hud { position: absolute; top: 20px; width: 900px; display: flex; justify-content: space-between; font-size: 2rem; font-weight: 900; letter-spacing: 2px; }
+        .p1-score { color: var(--p1); text-shadow: 0 0 15px rgba(255, 61, 0, 0.4); }
+        .p2-score { color: var(--p2); text-shadow: 0 0 15px rgba(0, 176, 255, 0.4); }
+
+        #dashboard { margin-top: 25px; display: grid; grid-template-columns: 1fr 150px 1fr; gap: 20px; width: 900px; align-items: center; }
+        .player-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); padding: 15px; border-radius: 24px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; border: 2px solid transparent; transition: 0.4s; opacity: 0.4; }
+        .player-panel.active { opacity: 1; transform: translateY(-5px); border-color: rgba(255,255,255,0.2); }
+        .player-panel.p1-active { border-color: var(--p1); }
+        .player-panel.p2-active { border-color: var(--p2); }
+
+        .control-unit { display: flex; flex-direction: column; align-items: center; }
+        .label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 4px; }
+        .val { font-size: 1.1rem; font-weight: 700; }
+        
+        select { background: #222; color: white; border: 1px solid #444; border-radius: 5px; padding: 5px; cursor: pointer; }
+
+        #fire-btn { background: white; border: none; color: black; padding: 20px; border-radius: 50%; font-size: 0.9rem; font-weight: 900; cursor: pointer; height: 90px; width: 90px; box-shadow: 0 0 30px rgba(255,255,255,0.2); transition: 0.2s; }
+        #fire-btn:hover { background: #ff0055; color: white; transform: scale(1.1); }
+        input[type=range] { width: 100%; accent-color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="score-hud">
+        <div class="p1-score">P1: <span id="s1">0</span></div>
+        <div class="p2-score"><span id="s2">0</span> :P2</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="dashboard">
+        <!-- Player 1 Controls -->
+        <div id="panel-1" class="player-panel active p1-active">
+            <div class="control-unit"><span class="label">Angle</span><input type="range" id="p1-angle" min="0" max="90" value="45"><span id="p1-angle-val" class="val">45°</span></div>
+            <div class="control-unit"><span class="label">Power</span><input type="range" id="p1-power" min="10" max="100" value="50"><span id="p1-power-val" class="val">50</span></div>
+            <div class="control-unit"><span class="label">Weapon</span><select id="p1-weapon"><option value="standard">Standard</option><option value="mega">Mega Bomb</option><option value="sniper">Sniper</option></select></div>
+        </div>
+
+        <div style="display: flex; justify-content: center;"><button id="fire-btn">FIRE</button></div>
+
+        <!-- Player 2 Controls -->
+        <div id="panel-2" class="player-panel">
+            <div class="control-unit"><span class="label">Angle</span><input type="range" id="p2-angle" min="0" max="90" value="45"><span id="p2-angle-val" class="val">45°</span></div>
+            <div class="control-unit"><span class="label">Power</span><input type="range" id="p2-power" min="10" max="100" value="50"><span id="p2-power-val" class="val">50</span></div>
+            <div class="control-unit"><span class="label">Weapon</span><select id="p2-weapon"><option value="standard">Standard</option><option value="mega">Mega Bomb</option><option value="sniper">Sniper</option></select></div>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 900; canvas.height = 450;
+
+            const terrain = Array.from({length: 900}, (_, i) => 360 + Math.sin(i * 0.015) * 35 + Math.cos(i * 0.04) * 8);
+            const players = {
+                p1: { x: 120, y: 0, color: '#FF3D00', angle: 45, power: 60, score: 0, weapon: 'standard', id: 1, panel: document.getElementById('panel-1') },
+                p2: { x: 780, y: 0, color: '#00B0FF', angle: 45, power: 60, score: 0, weapon: 'standard', id: 2, panel: document.getElementById('panel-2') }
+            };
+
+            const WEAPONS = {
+                standard: { r: 35, speed: 0.18, color: '#fff' },
+                mega: { r: 60, speed: 0.14, color: '#ffcc00' },
+                sniper: { r: 15, speed: 0.28, color: '#00ffcc' }
+            };
+
+            let currentPlayer = players.p1;
+            let projectile = null;
+            const audioLib = { music: new Audio('background_music.mp3'), fire: new Audio('fire.mp3'), explode: new Audio('explosion.wav'), move: new Audio('move.wav') };
+            audioLib.music.loop = true;
+            function playInstant(key, vol = 0.6) { const s = audioLib[key].cloneNode(); s.volume = vol; s.play().catch(() => {}); }
+            window.addEventListener('mousedown', () => { if(audioLib.music.paused) audioLib.music.play().catch(() => {}); });
+
+            const getH = (x) => terrain[Math.floor(Math.max(0, Math.min(899, x)))];
+            function destroy(x, y, r) {
+                for (let i = Math.floor(x-r); i < Math.ceil(x+r); i++) {
+                    if (i < 0 || i >= 900) continue;
+                    const d = Math.sqrt(Math.max(0, r*r - Math.pow(x-i, 2)));
+                    terrain[i] = Math.max(terrain[i], y + d);
+                }
+            }
+
+            document.getElementById('fire-btn').onclick = () => {
+                if (projectile) return;
+                playInstant('fire', 0.8);
+                const w = WEAPONS[currentPlayer.weapon];
+                const rad = ((currentPlayer.id === 1) ? currentPlayer.angle : (180 - currentPlayer.angle)) * (Math.PI / 180);
+                projectile = { x: currentPlayer.x, y: currentPlayer.y - 15, vx: Math.cos(rad) * (currentPlayer.power * w.speed), vy: -Math.sin(rad) * (currentPlayer.power * w.speed), type: currentPlayer.weapon };
+            };
+
+            ['p1', 'p2'].forEach(p => {
+                document.getElementById(`${p}-angle`).oninput = function() { playInstant('move', 0.1); players[p].angle = parseInt(this.value); document.getElementById(`${p}-angle-val`).innerText = this.value + '°'; };
+                document.getElementById(`${p}-power`).oninput = function() { playInstant('move', 0.1); players[p].power = parseInt(this.value); document.getElementById(`${p}-power-val`).innerText = this.value; };
+                document.getElementById(`${p}-weapon`).onchange = function() { players[p].weapon = this.value; };
+            });
+
+            function drawTank(tank) {
+                tank.y = getH(tank.x) - 8;
+                ctx.save(); ctx.translate(tank.x, tank.y);
+                ctx.fillStyle = tank.color; ctx.beginPath(); ctx.roundRect(-18, -8, 36, 16, 4); ctx.fill();
+                const rad = ((tank.id === 1) ? tank.angle : (180 - tank.angle)) * (Math.PI / 180);
+                ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.cos(rad)*28, -4 - Math.sin(rad)*28);
+                ctx.strokeStyle = tank.color; ctx.lineWidth = 5; ctx.stroke(); ctx.restore();
+            }
+
+            function gameLoop() {
+                ctx.clearRect(0, 0, 900, 450);
+                ctx.beginPath(); ctx.moveTo(0, 450); terrain.forEach((y, x) => ctx.lineTo(x, y));
+                ctx.lineTo(900, 450); ctx.fillStyle = '#1b5e20'; ctx.fill();
+                Object.values(players).forEach(drawTank);
+                if (projectile) {
+                    projectile.x += projectile.vx; projectile.vy += 0.25; projectile.y += projectile.vy;
+                    ctx.fillStyle = WEAPONS[projectile.type].color; ctx.beginPath(); ctx.arc(projectile.x, projectile.y, 5, 0, Math.PI*2); ctx.fill();
+                    
+                    const target = (currentPlayer === players.p1) ? players.p2 : players.p1;
+                    const dist = Math.hypot(projectile.x - target.x, projectile.y - target.y);
+                    
+                    if (projectile.y >= getH(projectile.x) || dist < 22) {
+                        const w = WEAPONS[projectile.type];
+                        playInstant('explode', 0.8); destroy(projectile.x, projectile.y, w.r);
+                        
+                        if (dist < w.r + 10) { // Scoring if hit or close splash
+                            currentPlayer.score += Math.max(10, Math.floor(100 - dist));
+                            document.getElementById(`s${currentPlayer.id}`).innerText = currentPlayer.score;
+                        }
+                        
+                        projectile = null;
+                        currentPlayer = target;
+                        document.getElementById('panel-1').className = 'player-panel' + (currentPlayer.id === 1 ? ' active p1-active' : '');
+                        document.getElementById('panel-2').className = 'player-panel' + (currentPlayer.id === 2 ? ' active p2-active' : '');
+                    }
+                }
+                requestAnimationFrame(gameLoop);
+            }
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
